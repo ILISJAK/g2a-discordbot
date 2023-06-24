@@ -1,19 +1,42 @@
 import discord
+from discord.ext import tasks
 import responses
 from dotenv import load_dotenv
 import os
+import json
 
 load_dotenv()
 
 
 async def send_message(message, user_message, is_private):
     try:
-        response = responses.handle_response(user_message)
+        username = str(message.author)
+        user_id = message.author.id
+        response = responses.handle_response(user_message, username, user_id)
         await message.author.send(
             response
         ) if is_private else await message.channel.send(response)
     except Exception as e:
         print(e)
+
+
+async def send_product_info(user, products):
+    message_content = f"Ahoy {user.name},\n\n"
+    message_content += (
+        "We've spotted some treasures that meets yer price alert criteria:\n\n"
+    )
+    for product_info in products:
+        product_name = product_info["product"]
+        product_price = product_info["price"]
+        product_url = product_info["url"]
+        # Wrap the URL with angle brackets to disable the link preview
+        message_content += (
+            f"**Treasure Name:** {product_name}\n"
+            f"**Doubloons Needed:** {product_price}\n"
+            f"**Map (URL):** <{product_url}>\n\n"
+        )
+    message_content += "If ye be interested, cast yer eyes on the maps above. Thank ye for sailin' with us!"
+    await user.send(content=message_content)
 
 
 def run_discord_bot():
@@ -26,9 +49,27 @@ def run_discord_bot():
 
     client = discord.Client(intents=intents)
 
+    @tasks.loop(hours=24)  # This will run the task every 24 hours
+    async def check_product_prices():
+        print("Checking product prices...")
+        thresholds = responses.read_thresholds()
+        product_data = responses.read_product_data()
+        for username, user_info in thresholds.items():
+            user_id = user_info["id"]
+            threshold = user_info["threshold"]
+            user = await client.fetch_user(user_id)  # Get the User object for this user
+            matching_products = []
+            for product in product_data:
+                price = responses.parse_price(product["price"])
+                if price <= threshold:
+                    matching_products.append(product)
+            if matching_products:
+                await send_product_info(user, matching_products)
+
     @client.event
     async def on_ready():
         print(f"{client.user} is now running")
+        check_product_prices.start()
 
     @client.event
     async def on_message(message):

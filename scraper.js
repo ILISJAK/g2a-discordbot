@@ -1,5 +1,6 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
+const cron = require('node-cron');
 
 const urls = [
     "https://www.g2a.com/sea-of-thieves-deluxe-edition-pc-steam-account-account-global-i10000145411033",
@@ -7,7 +8,8 @@ const urls = [
     "https://www.instant-gaming.com/en/11555-buy-microsoft-store-sea-of-thieves-pc-xbox-one-xbox-series-x-s-xbox-one-pc-xbox-series-x-s-game-microsoft-store-europe/"
 ];
 
-(async () => {
+// The cron syntax '0 0 * * *' corresponds to running once every day at midnight
+cron.schedule('0 0 * * *', async () => {
     const browser = await puppeteer.launch({ headless: false });
     const productDataArray = []; // Array to store product data
 
@@ -19,11 +21,14 @@ const urls = [
         let productName;
 
         if (url.includes("g2a.com")) {
-            price = await page.evaluate(() =>
-                document.querySelector(
-                    "div[class='PaymentsRadiostyles__PriceWrapper-sc-gqqzhy-0 htjcnt'] span[class='sc-iqAclL sc-crzoAE dJFpVb frbZCR sc-bqGGPW fIHClq']"
-                ).innerText.trim()
-            );
+            try {
+                await page.waitForSelector("span[data-locator='zth-price']", { timeout: 5000 });
+                price = await page.evaluate(() =>
+                    document.querySelector("span[data-locator='zth-price']").innerText.trim()
+                );
+            } catch (error) {
+                console.error('Price element not found:', error);
+            }
 
             // Split the URL on slashes and select the product name segment
             const urlParts = url.split("/");
@@ -57,4 +62,4 @@ const urls = [
     fs.writeFileSync('product-data.json', JSON.stringify(productDataArray));
 
     await browser.close();
-})();
+});
