@@ -1,19 +1,29 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+puppeteer.use(StealthPlugin());
 const fs = require('fs');
-const cron = require('node-cron');
 
-const urls = [
-    "https://www.g2a.com/sea-of-thieves-deluxe-edition-pc-steam-account-account-global-i10000145411033",
-    "https://www.instant-gaming.com/en/967-buy-sea-of-thieves-pc-xbox-one-xbox-series-x-s-pc-xbox-one-xbox-series-x-s-game-microsoft-store/",
-    "https://www.instant-gaming.com/en/11555-buy-microsoft-store-sea-of-thieves-pc-xbox-one-xbox-series-x-s-xbox-one-pc-xbox-series-x-s-game-microsoft-store-europe/"
-];
+// Read the user thresholds and URLs from the JSON file
+let thresholds = JSON.parse(fs.readFileSync('thresholds.json', 'utf8'));
 
-// The cron syntax '0 0 * * *' corresponds to running once every day at midnight
-cron.schedule('0 0 * * *', async () => {
-    const browser = await puppeteer.launch({ headless: false });
+// Collect all the URLs from all users
+let urls = [];
+for (let username in thresholds) {
+    let user_urls = thresholds[username]['urls'];
+    urls = urls.concat(user_urls);
+}
+
+(async () => {
+    console.log("Starting scraping cycle...");
+    const browser = await puppeteer.launch({ headless: "new" });
     const productDataArray = []; // Array to store product data
 
     for (const url of urls) {
+        if (!url || typeof url !== 'string') {
+            console.error(`Invalid URL: ${url}`);
+            continue; // Skip this iteration of the loop
+        }
+
         const page = await browser.newPage();
         await page.goto(url, { waitUntil: 'networkidle2' });
 
@@ -45,6 +55,14 @@ cron.schedule('0 0 * * *', async () => {
             productName = await page.evaluate(() =>
                 document.querySelector("h1.game-title").innerText.trim()
             );
+        } else if (url.includes("store.steampowered.com")) {
+            price = await page.evaluate(() =>
+                document.querySelector(".game_purchase_price.price").innerText.trim()
+            );
+
+            productName = await page.evaluate(() =>
+                document.querySelector(".apphub_AppName").innerText.trim()
+            );
         }
 
         const productData = {
@@ -56,10 +74,21 @@ cron.schedule('0 0 * * *', async () => {
         productDataArray.push(productData); // Add product data to the array
 
         await page.close();
+
+        console.log("Scraped data: ", productData);
     }
 
     // Write the entire product data array to the JSON file
-    fs.writeFileSync('product-data.json', JSON.stringify(productDataArray));
+    try {
+        // Write the entire product data array to the JSON file
+        console.log("Writing to product-data.json... ", productDataArray);
+        fs.writeFileSync('product-data.json', JSON.stringify(productDataArray));
+        console.log("Data written successfully");
+    } catch (error) {
+        console.error('Error writing to file:', error);
+    }
 
+    // Close the browser
     await browser.close();
-});
+    console.log("Browser closed");
+})();

@@ -1,6 +1,10 @@
 .env
 .html
 
+# Sensitive data
+/product-data.json
+/thresholds.json
+
 # Logs
 logs
 *.log
