@@ -4,6 +4,8 @@
 # Sensitive data
 /product-data.json
 /thresholds.json
+/package.json
+/package-lock.json
 
 # Logs
 logs
