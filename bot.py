@@ -56,12 +56,20 @@ def run_discord_bot():
         product_data = responses.read_product_data()
         for username, user_info in thresholds.items():
             user_id = user_info["id"]
-            threshold = user_info["threshold"]
+            threshold = user_info.get("threshold", float("inf"))
+            user_urls = user_info.get("urls", [])
             user = await client.fetch_user(user_id)  # Get the User object for this user
             matching_products = []
             for product in product_data:
+                # Check if the product URL matches one of the user's URLs
+                if product["url"] not in user_urls:
+                    continue
+
                 price = responses.parse_price(product["price"])
-                if price <= threshold:
+                if price is None:
+                    product["price"] = "Could not determine price"
+                    matching_products.append(product)
+                elif price <= threshold:
                     matching_products.append(product)
             if matching_products:
                 await send_product_info(user, matching_products)
